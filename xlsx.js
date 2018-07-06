@@ -18130,7 +18130,6 @@ var HTML_ = (function() {
 	function make_html_row(ws, r, R, o) {
 		var M = (ws['!merges'] ||[]);
 		var oo = [];
-		var nullcell = "<td>" + (o.editable ? '<span contenteditable="true"></span>' : "" ) + "</td>";
 		for(var C = r.s.c; C <= r.e.c; ++C) {
 			var RS = 0, CS = 0;
 			for(var j = 0; j < M.length; ++j) {
@@ -18142,6 +18141,7 @@ var HTML_ = (function() {
 			if(RS < 0) continue;
 			var coord = encode_cell({r:R,c:C});
 			var cell = o.dense ? (ws[R]||[])[C] : ws[coord];
+			var nullcell = `<td id="${"sjs-" + coord}">` + (o.editable ? '<span contenteditable="true"></span>' : "" ) + "</td>";
 			if(!cell || cell.v == null) { oo.push(nullcell); continue; }
 			/* TODO: html entities */
 			var w = cell.h || escapexml(cell.w || (format_cell(cell), cell.w) || "");
