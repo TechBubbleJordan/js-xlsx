@@ -133,6 +133,12 @@ var paths = {
 	dnsxlsx: dir + 'defined_names_simple.xlsx',
 	dnsxlsb: dir + 'defined_names_simple.xlsb',
 
+	dnuxls: dir + 'defined_names_unicode.xls',
+	dnuxml: dir + 'defined_names_unicode.xml',
+	dnuods: dir + 'defined_names_unicode.ods',
+	dnuxlsx: dir + 'defined_names_unicode.xlsx',
+	dnuxlsb: dir + 'defined_names_unicode.xlsb',
+
 	dtxls:  dir + 'xlsx-stream-d-date-cell.xls',
 	dtxml:  dir + 'xlsx-stream-d-date-cell.xls.xml',
 	dtxlsx:  dir + 'xlsx-stream-d-date-cell.xlsx',
@@ -300,7 +306,7 @@ function parsetest(x/*:string*/, wb/*:Workbook*/, full/*:boolean*/, ext/*:?strin
 			var jsonf = getfile(dir, x, i, ".json");
 			if(fs.existsSync(jsonf)) it('#' + i + ' (' + ws + ')', function() {
 				var file = fs.readFileSync(jsonf, 'utf-8');
-				var json = X.utils.make_json(wb.Sheets[ws]);
+				var json = X.utils.make_json(wb.Sheets[ws], {raw:false});
 				assert.equal(JSON.stringify(json), fixjson(file), "JSON badness");
 			});
 		});
@@ -755,6 +761,13 @@ describe('API', function() {
 		X.utils.sheet_add_aoa(ws, [[4,5,6,7,8,9,0]], {origin: -1});
 		assert.equal(X.utils.sheet_to_csv(ws).trim(), "S,h,e,e,t,J,S\n1,2,,,5,6,7\n2,3,,,6,7,8\n3,4,,,7,8,9\n4,5,6,7,8,9,0");
 	});
+	it('sheet_add_aoa support object cell', function() {
+		var data = X.utils.aoa_to_sheet([
+			['url', 'name', 'id'],
+			[ { l: { Target: 'https://123.com' }, v: 'url', t: 's' }, 'tom', 'xxx' ]
+		]);
+		if(assert.deepEqual) assert.deepEqual(data.A2, { l: { Target: 'https://123.com' }, v: 'url', t: 's' });
+	});
 });
 
 function coreprop(props) {
@@ -1097,7 +1110,7 @@ describe('parse features', function() {
 			var sheetName = 'Sheet1';
 			wb = X.read(fs.readFileSync(paths.dtxlsx), {type:TYPE});
 			ws = wb.Sheets[sheetName];
-			var sheet = X.utils.sheet_to_json(ws);
+			var sheet = X.utils.sheet_to_json(ws, {raw: false});
 			assert.equal(sheet[3]['てすと'], '2/14/14');
 		});
 		it('cellDates should not affect formatted text', function() {
@@ -1154,6 +1167,39 @@ describe('parse features', function() {
 		assert.equal(names[i].Ref, "Sheet1!$A$2");
 	}); }); });
 
+	describe('defined names unicode', function() {[
+		/* desc     path      */
+		['xlsx', paths.dnuxlsx],
+		['xlsb', paths.dnuxlsb],
+		['ods',  paths.dnuods ],
+		['xls',  paths.dnuxls ],
+		['xlml', paths.dnuxml ]
+	].forEach(function(m) { it(m[0], function() {
+		var wb = X.read(fs.readFileSync(m[1]), {type:TYPE});
+		[
+			"NoContainsJapanese",
+			"\u65E5\u672C\u8a9e\u306e\u307f",
+			"sheet\u65e5\u672c\u8a9e",
+			"\u65e5\u672c\u8a9esheet",
+			"sheet\u65e5\u672c\u8a9esheet"
+		].forEach(function(n, i) { assert.equal(wb.SheetNames[i], n); });
+		[
+			["name\u65e5\u672c\u8a9e", "sheet\u65e5\u672c\u8a9e!$A$1"],
+			["name\u65e5\u672c\u8a9ename", "sheet\u65e5\u672c\u8a9esheet!$B$2"],
+			["NoContainsJapaneseName", "\u65e5\u672c\u8a9e\u306e\u307f!$A$1"],
+			["sheet\u65e5\u672c\u8a9e", "sheet\u65e5\u672c\u8a9e!$A$1"],
+			["\u65e5\u672c\u8a9e", "NoContainsJapanese!$A$1"],
+			["\u65e5\u672c\u8a9ename", "\u65e5\u672c\u8a9esheet!$I$2"]
+		].forEach(function(n) {
+			var DN = null;
+			var arr = wb.Workbook.Names;
+			for(var j = 0; j < arr.length; ++j) if(arr[j].Name == n[0]) DN = arr[j];
+			assert(DN);
+			// $FlowIgnore
+			assert.equal(DN.Ref, n[1]);
+		});
+	}); }); });
+
 	describe('auto filter', function() {[
 		['xlsx', paths.afxlsx],
 		['xlsb', paths.afxlsb],
@@ -1185,7 +1231,7 @@ describe('parse features', function() {
 			assert.equal(get_cell(wb2.Sheets.Sheet1, "A2").h, "&amp;");
 			assert.equal(get_cell(wb2.Sheets.Sheet1, "B2").h, "&lt;");
 			assert.equal(get_cell(wb2.Sheets.Sheet1, "C2").h, "&gt;");
-			assert.equal(get_cell(wb2.Sheets.Sheet1, "D2").h, "&#x000a;");
+			assert.equal(get_cell(wb2.Sheets.Sheet1, "D2").h, "<br/>");
 		}); });
 	});
 
@@ -1600,7 +1646,7 @@ describe('roundtrip features', function() {
 			{a:true, c:false},
 			{c:fixdate}
 		];
-		var o = X.utils.sheet_to_json(X.utils.json_to_sheet(data, {cellDates:true}), {raw:true});
+		var o = X.utils.sheet_to_json(X.utils.json_to_sheet(data, {cellDates:true}));
 		data.forEach(function(row, i) {
 			Object.keys(row).forEach(function(k) { assert.equal(row[k], o[i][k]); });
 		});
@@ -1668,7 +1714,7 @@ describe('json output', function() {
 	if(typeof before != 'undefined') before(bef);
 	else it('before', bef);
 	it('should use first-row headers and full sheet by default', function() {
-		var json = X.utils.sheet_to_json(ws);
+		var json = X.utils.sheet_to_json(ws, {raw: null});
 		assert.equal(json.length, data.length - 1);
 		assert.equal(json[0][1], "TRUE");
 		assert.equal(json[1][2], "bar");
@@ -1677,7 +1723,7 @@ describe('json output', function() {
 		assert.throws(function() { seeker(json, [1,2,3], "baz"); });
 	});
 	it('should create array of arrays if header == 1', function() {
-		var json = X.utils.sheet_to_json(ws, {header:1});
+		var json = X.utils.sheet_to_json(ws, {header:1, raw:""});
 		assert.equal(json.length, data.length);
 		assert.equal(json[1][0], "TRUE");
 		assert.equal(json[2][1], "bar");
@@ -1687,7 +1733,7 @@ describe('json output', function() {
 		assert.throws(function() { seeker(json, [0,1,2], "baz"); });
 	});
 	it('should use column names if header == "A"', function() {
-		var json = X.utils.sheet_to_json(ws, {header:'A'});
+		var json = X.utils.sheet_to_json(ws, {header:'A', raw:false});
 		assert.equal(json.length, data.length);
 		assert.equal(json[1].A, "TRUE");
 		assert.equal(json[2].B, "bar");
@@ -1697,7 +1743,7 @@ describe('json output', function() {
 		assert.throws(function() { seeker(json, "ABC", "baz"); });
 	});
 	it('should use column labels if specified', function() {
-		var json = X.utils.sheet_to_json(ws, {header:["O","D","I","N"]});
+		var json = X.utils.sheet_to_json(ws, {header:["O","D","I","N"], raw:0});
 		assert.equal(json.length, data.length);
 		assert.equal(json[1].O, "TRUE");
 		assert.equal(json[2].D, "bar");
@@ -1710,7 +1756,7 @@ describe('json output', function() {
 		it('should accept custom ' + w[0] + ' range', function() {
 			var json = X.utils.sheet_to_json(ws, {header:1, range:w[1]});
 			assert.equal(json.length, 3);
-			assert.equal(json[0][0], "TRUE");
+			assert.equal(json[0][0], true);
 			assert.equal(json[1][1], "bar");
 			assert.equal(json[2][2], "qux");
 			assert.doesNotThrow(function() { seeker(json, [0,1,2], "sheetjs"); });
@@ -1721,7 +1767,7 @@ describe('json output', function() {
 	it('should use defval if requested', function() {
 		var json = X.utils.sheet_to_json(ws, {defval: 'jimjin'});
 		assert.equal(json.length, data.length - 1);
-		assert.equal(json[0][1], "TRUE");
+		assert.equal(json[0][1], true);
 		assert.equal(json[1][2], "bar");
 		assert.equal(json[2][3], "qux");
 		assert.equal(json[2][2], "jimjin");
@@ -2094,6 +2140,7 @@ describe('HTML', function() {
 	});
 	if(domtest) it('should honor sheetRows', function() {
 		var html = X.utils.sheet_to_html(X.utils.aoa_to_sheet([[1,2],[3,4],[5,6]]));
+		// $FlowIgnore
 		html = /<body[^>]*>([\s\S]*)<\/body>/i.exec(html)[1];
 		var ws = X.utils.table_to_sheet(get_dom_element(html));
 		assert.equal(ws['!ref'], "A1:B3");
@@ -2333,4 +2380,3 @@ mft.forEach(function(x) {
 		case "yes-formula": formulae = true; break;
 	}});
 }); });
-
